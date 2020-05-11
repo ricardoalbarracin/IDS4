@@ -43,7 +43,7 @@ namespace Skoruba.IdentityServer4.Admin.EntityFramework.Repositories
         {
             if (encryptionKey != null)
             {
-                var result = DbContext.EncryptionKeys.SingleOrDefault(b => b.Id == encryptionKey.Id);
+                var result = await DbContext.EncryptionKeys.SingleOrDefaultAsync(b => b.Id == encryptionKey.Id);
                 if (result != null)
                 {
                     result.Enable = encryptionKey.Enable;
