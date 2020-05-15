@@ -50,9 +50,9 @@ namespace Skoruba.IdentityServer4.Admin.UnitTests.Services
 			return apiResourceRepository;
 		}
 
-		private IClientService GetClientService(IClientRepository repository, IClientServiceResources resources, IAuditEventLogger auditEventLogger)
+		private IClientService GetClientService(IClientRepository repository, IClientServiceResources resources, IEncryptionKeyRepository encryptionKeyRepository, IAuditEventLogger auditEventLogger)
 		{
-			IClientService clientService = new ClientService(repository, resources, auditEventLogger);
+			IClientService clientService = new ClientService(repository, resources, encryptionKeyRepository, auditEventLogger);
 
 			return clientService;
 		}
@@ -76,9 +76,12 @@ namespace Skoruba.IdentityServer4.Admin.UnitTests.Services
             var localizerClientResource = localizerClientResourceMock.Object;
 
             var auditLoggerMock = new Mock<IAuditEventLogger>();
-            var auditLogger = auditLoggerMock.Object;
+			var auditLogger = auditLoggerMock.Object;
 
-            var clientService = GetClientService(clientRepository, localizerClientResource, auditLogger);
+			var encryptionKeyMock = new Mock<IEncryptionKeyRepository>();
+			var encryptionKey = encryptionKeyMock.Object;
+
+			var clientService = GetClientService(clientRepository, localizerClientResource, encryptionKey, auditLogger);
             var apiResourceService = GetApiResourceService(apiResourceRepository, localizerApiResource, clientService, auditLogger);
 
             return apiResourceService;

@@ -27,6 +27,7 @@ using Skoruba.IdentityServer4.Admin.EntityFramework.PostgreSQL.Extensions;
 using Skoruba.IdentityServer4.Admin.EntityFramework.Shared.Configuration;
 using Skoruba.IdentityServer4.Admin.EntityFramework.SqlServer.Extensions;
 using Skoruba.IdentityServer4.Admin.EntityFramework.Helpers;
+using IdentityServer4.Validation;
 using Skoruba.AuditLogging.EntityFramework.DbContexts;
 using Skoruba.AuditLogging.EntityFramework.Entities;
 using Skoruba.AuditLogging.EntityFramework.Extensions;
@@ -152,6 +153,7 @@ namespace Skoruba.IdentityServer4.STS.Identity.Helpers
         {
             var databaseProvider = configuration.GetSection(nameof(DatabaseProviderConfiguration)).Get<DatabaseProviderConfiguration>();
             
+
             var identityConnectionString = configuration.GetConnectionString(ConfigurationConsts.IdentityDbConnectionStringKey);
             var configurationConnectionString = configuration.GetConnectionString(ConfigurationConsts.ConfigurationDbConnectionStringKey);
             var persistedGrantsConnectionString = configuration.GetConnectionString(ConfigurationConsts.PersistedGrantDbConnectionStringKey);
@@ -278,27 +280,19 @@ namespace Skoruba.IdentityServer4.STS.Identity.Helpers
         /// </summary>
         /// <typeparam name="TIdentityDbContext">DbContext for Identity</typeparam>
         /// <typeparam name="TUserIdentity">User Identity class</typeparam>
-        /// <typeparam name="TUserIdentityRole">User Identity Role class</typeparam>
+        
         /// <param name="services"></param>
         /// <param name="configuration"></param>
-        public static void AddAuthenticationServices<TIdentityDbContext, TUserIdentity, TUserIdentityRole>(this IServiceCollection services, IConfiguration configuration) where TIdentityDbContext : DbContext
-            where TUserIdentity : class
-            where TUserIdentityRole : class
+        public static void AddAuthenticationServices<TIdentityDbContext>(this IServiceCollection services, IConfiguration configuration) where TIdentityDbContext : DbContext
+           
         {
             var loginConfiguration = GetLoginConfiguration(configuration);
             var registrationConfiguration = GetRegistrationConfiguration(configuration);
 
             services
                 .AddSingleton(registrationConfiguration)
-                .AddSingleton(loginConfiguration)
-                .AddScoped<UserResolver<TUserIdentity>>()
-                .AddIdentity<TUserIdentity, TUserIdentityRole>(options =>
-                {
-                    options.User.RequireUniqueEmail = true;
-                })
-                .AddEntityFrameworkStores<TIdentityDbContext>()
-                .AddDefaultTokenProviders();
-
+                .AddSingleton(loginConfiguration);
+            services.AddScoped<IResourceOwnerPasswordValidator, ActiveDirectoryPasswordValidator>();
             services.Configure<IISOptions>(iis =>
             {
                 iis.AuthenticationDisplayName = "Windows";
@@ -354,12 +348,12 @@ namespace Skoruba.IdentityServer4.STS.Identity.Helpers
         /// <typeparam name="TPersistedGrantDbContext"></typeparam>
         /// <param name="services"></param>
         /// <param name="configuration"></param>
-        public static IIdentityServerBuilder AddIdentityServer<TConfigurationDbContext, TPersistedGrantDbContext, TUserIdentity>(
+        public static IIdentityServerBuilder AddIdentityServer<TConfigurationDbContext, TPersistedGrantDbContext>(
             this IServiceCollection services,
             IConfiguration configuration)
             where TPersistedGrantDbContext : DbContext, IAdminPersistedGrantDbContext
             where TConfigurationDbContext : DbContext, IAdminConfigurationDbContext
-            where TUserIdentity : class
+
         {
             var builder = services.AddIdentityServer(options =>
                 {
@@ -369,8 +363,8 @@ namespace Skoruba.IdentityServer4.STS.Identity.Helpers
                     options.Events.RaiseSuccessEvents = true;
                 })
                 .AddConfigurationStore<TConfigurationDbContext>()
-                .AddOperationalStore<TPersistedGrantDbContext>()
-                .AddAspNetIdentity<TUserIdentity>();
+                .AddOperationalStore<TPersistedGrantDbContext>();
+            //.AddAspNetIdentity<TUserIdentity>();
 
             builder.AddCustomSigningCredential(configuration);
             builder.AddCustomValidationKey(configuration);
@@ -430,9 +424,9 @@ namespace Skoruba.IdentityServer4.STS.Identity.Helpers
             where TIdentityDbContext : DbContext
         {
             var configurationDbConnectionString = configuration.GetConnectionString(ConfigurationConsts.ConfigurationDbConnectionStringKey);
-            var persistedGrantsDbConnectionString = configuration.GetConnectionString(ConfigurationConsts.PersistedGrantDbConnectionStringKey);            
+            var persistedGrantsDbConnectionString = configuration.GetConnectionString(ConfigurationConsts.PersistedGrantDbConnectionStringKey);
             var identityDbConnectionString = configuration.GetConnectionString(ConfigurationConsts.IdentityDbConnectionStringKey);
-            
+
             var healthChecksBuilder = services.AddHealthChecks()
                 .AddDbContextCheck<TConfigurationDbContext>("ConfigurationDbContext")
                 .AddDbContextCheck<TPersistedGrantDbContext>("PersistedGrantsDbContext")

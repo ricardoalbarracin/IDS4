@@ -760,9 +760,10 @@ namespace Skoruba.IdentityServer4.Admin.UnitTests.Controllers
             var localizer = serviceProvider.GetRequiredService<IStringLocalizer<ConfigurationController>>();
             var logger = serviceProvider.GetRequiredService<ILogger<ConfigurationController>>();
             var tempDataDictionaryFactory = serviceProvider.GetRequiredService<ITempDataDictionaryFactory>();
+            var EncryptionKey = serviceProvider.GetRequiredService<IEncryptionKeyService>();
 
             //Get Controller
-            var controller = new ConfigurationController(identityResourceService, apiResourceService, clientService, localizer, logger);
+            var controller = new ConfigurationController(identityResourceService, apiResourceService, clientService, localizer, EncryptionKey, logger);
 
             //Setup TempData for notofication in basecontroller
             var httpContext = serviceProvider.GetRequiredService<IHttpContextAccessor>().HttpContext;

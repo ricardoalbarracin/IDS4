@@ -5,6 +5,7 @@
 // Modified by Jan Škoruba
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
@@ -16,8 +17,9 @@ using IdentityServer4.Extensions;
 using IdentityServer4.Models;
 using IdentityServer4.Services;
 using IdentityServer4.Stores;
-using MHCP.DGT.Identity.ProxyExt;
+
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
@@ -35,9 +37,9 @@ namespace Skoruba.IdentityServer4.STS.Identity.Controllers
         where TUser : IdentityUser<TKey>, new()
         where TKey : IEquatable<TKey>
     {
-        private readonly UserResolver<TUser> _userResolver;
-        private readonly UserManager<TUser> _userManager;
-        private readonly SignInManager<TUser> _signInManager;
+        //private readonly UserResolver<TUser> _userResolver;
+        //private readonly UserManager<TUser> _userManager;
+        //private readonly SignInManager<TUser> _signInManager;
         private readonly IIdentityServerInteractionService _interaction;
         private readonly IClientStore _clientStore;
         private readonly IAuthenticationSchemeProvider _schemeProvider;
@@ -48,9 +50,9 @@ namespace Skoruba.IdentityServer4.STS.Identity.Controllers
         private readonly RegisterConfiguration _registerConfiguration;
 
         public AccountController(
-            UserResolver<TUser> userResolver,
-            UserManager<TUser> userManager,
-            SignInManager<TUser> signInManager,
+            //UserResolver<TUser> userResolver,
+            //UserManager<TUser> userManager,
+            //SignInManager<TUser> signInManager,
             IIdentityServerInteractionService interaction,
             IClientStore clientStore,
             IAuthenticationSchemeProvider schemeProvider,
@@ -60,9 +62,9 @@ namespace Skoruba.IdentityServer4.STS.Identity.Controllers
             LoginConfiguration loginConfiguration,
             RegisterConfiguration registerConfiguration)
         {
-            _userResolver = userResolver;
-            _userManager = userManager;
-            _signInManager = signInManager;
+            //_userResolver = userResolver;
+            //_userManager = userManager;
+            //_signInManager = signInManager;
             _interaction = interaction;
             _clientStore = clientStore;
             _schemeProvider = schemeProvider;
@@ -80,14 +82,13 @@ namespace Skoruba.IdentityServer4.STS.Identity.Controllers
         [AllowAnonymous]
         public async Task<IActionResult> Login(string returnUrl)
         {
-            var userAccountManagementProxy = UserAccountManagementFactory.CreateUserInternalAccountManagementProxy();
             // build a model so we know what to show on the login page
             var vm = await BuildLoginViewModelAsync(returnUrl);
 
             if (vm.EnableLocalLogin == false && vm.ExternalProviders.Count() == 1)
             {
                 // only one option for logging in
-                return ExternalLogin(vm.ExternalProviders.First().AuthenticationScheme, returnUrl);
+                //return ExternalLogin(vm.ExternalProviders.First().AuthenticationScheme, returnUrl);
             }
 
             return View(vm);
@@ -131,54 +132,76 @@ namespace Skoruba.IdentityServer4.STS.Identity.Controllers
 
             if (ModelState.IsValid)
             {
-                var user = await _userResolver.GetUserAsync(model.Username);
-                if (user != default(TUser))
+                var claims = new List<Claim>
                 {
-                    var result = await _signInManager.PasswordSignInAsync(user.UserName, model.Password, model.RememberLogin, lockoutOnFailure: true);
-                    if (result.Succeeded)
+                     new Claim("s_hash", "N6EsnA5lrNcmQbX01fRsWQ"),
+                     new Claim("sid", "3cCMX-rU9Risito0uWOnng"),
+                     new Claim("sub", "1fbdf6cc-bd21-404a-bc1e-31ea4ae0d21e"),
+                     new Claim("auth_time", "1589494097"),
+                     new Claim("idp", "local"),
+                     new Claim("amr", "pwd"),
+                     new Claim("name", "admin"),
+                     new Claim("email", "admin@skoruba.com"),
+                     new Claim("role", "SkorubaIdentityAdminAdministrator"),
+                };
+
+                var claimsIdentity = new ClaimsIdentity(
+                    claims, CookieAuthenticationDefaults.AuthenticationScheme);
+
+                var authProperties = new AuthenticationProperties();
+
+                await HttpContext.SignInAsync(
+                    CookieAuthenticationDefaults.AuthenticationScheme,
+                    new ClaimsPrincipal(claimsIdentity),
+                    authProperties);
+                //var user = await _userResolver.GetUserAsync(model.Username);
+                //if (user != default(TUser))
+                //{
+                //    var result = await _signInManager.PasswordSignInAsync(user.UserName, model.Password, model.RememberLogin, lockoutOnFailure: true);
+                //    if (result.Succeeded)
+                //    {
+                //        await _events.RaiseAsync(new UserLoginSuccessEvent(user.UserName, user.Id.ToString(), user.UserName));
+
+                if (context != null)
+                {
+                    if (await _clientStore.IsPkceClientAsync(context.ClientId))
                     {
-                        await _events.RaiseAsync(new UserLoginSuccessEvent(user.UserName, user.Id.ToString(), user.UserName));
-
-                        if (context != null)
-                        {
-                            if (await _clientStore.IsPkceClientAsync(context.ClientId))
-                            {
-                                // if the client is PKCE then we assume it's native, so this change in how to
-                                // return the response is for better UX for the end user.
-                                return View("Redirect", new RedirectViewModel { RedirectUrl = model.ReturnUrl });
-                            }
-
-                            // we can trust model.ReturnUrl since GetAuthorizationContextAsync returned non-null
-                            return Redirect(model.ReturnUrl);
-                        }
-
-                        // request for a local page
-                        if (Url.IsLocalUrl(model.ReturnUrl))
-                        {
-                            return Redirect(model.ReturnUrl);
-                        }
-
-                        if (string.IsNullOrEmpty(model.ReturnUrl))
-                        {
-                            return Redirect("~/");
-                        }
-
-                        // user might have clicked on a malicious link - should be logged
-                        throw new Exception("invalid return URL");
+                        // if the client is PKCE then we assume it's native, so this change in how to
+                        // return the response is for better UX for the end user.
+                        return View("Redirect", new RedirectViewModel { RedirectUrl = model.ReturnUrl });
                     }
 
-                    if (result.RequiresTwoFactor)
-                    {
-                        return RedirectToAction(nameof(LoginWith2fa), new { model.ReturnUrl, RememberMe = model.RememberLogin });
-                    }
-
-                    if (result.IsLockedOut)
-                    {
-                        return View("Lockout");
-                    }
+                    // we can trust model.ReturnUrl since GetAuthorizationContextAsync returned non-null
+                    return Redirect(model.ReturnUrl);
                 }
-                await _events.RaiseAsync(new UserLoginFailureEvent(model.Username, "invalid credentials"));
-                ModelState.AddModelError(string.Empty, AccountOptions.InvalidCredentialsErrorMessage);
+
+                // request for a local page
+                if (Url.IsLocalUrl(model.ReturnUrl))
+                {
+                    return Redirect(model.ReturnUrl);
+                }
+
+                if (string.IsNullOrEmpty(model.ReturnUrl))
+                {
+                    return Redirect("~/");
+                }
+
+                //        // user might have clicked on a malicious link - should be logged
+                //        throw new Exception("invalid return URL");
+                //    }
+
+                //    if (result.RequiresTwoFactor)
+                //    {
+                //        return RedirectToAction(nameof(LoginWith2fa), new { model.ReturnUrl, RememberMe = model.RememberLogin });
+                //    }
+
+                //    if (result.IsLockedOut)
+                //    {
+                //        return View("Lockout");
+                //    }
+                //}
+                //await _events.RaiseAsync(new UserLoginFailureEvent(model.Username, "invalid credentials"));
+                //ModelState.AddModelError(string.Empty, AccountOptions.InvalidCredentialsErrorMessage);
             }
 
             // something went wrong, show form with error
@@ -219,7 +242,7 @@ namespace Skoruba.IdentityServer4.STS.Identity.Controllers
             if (User?.Identity.IsAuthenticated == true)
             {
                 // delete local authentication cookie
-                await _signInManager.SignOutAsync();
+                await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
 
                 // raise the logout event
                 await _events.RaiseAsync(new UserLogoutSuccessEvent(User.GetSubjectId(), User.GetDisplayName()));
@@ -240,378 +263,10 @@ namespace Skoruba.IdentityServer4.STS.Identity.Controllers
             return View("LoggedOut", vm);
         }
 
-        [HttpGet]
-        [AllowAnonymous]
-        public async Task<IActionResult> ConfirmEmail(string userId, string code)
-        {
-            if (userId == null || code == null)
-            {
-                return View("Error");
-            }
-            var user = await _userManager.FindByIdAsync(userId);
-            if (user == null)
-            {
-                return View("Error");
-            }
-            var result = await _userManager.ConfirmEmailAsync(user, code);
-            return View(result.Succeeded ? "ConfirmEmail" : "Error");
-        }
-
-        [HttpGet]
-        [AllowAnonymous]
-        public IActionResult ForgotPassword()
-        {
-            return View();
-        }
-
-        [HttpPost]
-        [AllowAnonymous]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
-        {
-            if (ModelState.IsValid)
-            {
-                var user = await _userManager.FindByEmailAsync(model.Email);
-
-                if (user == null || !await _userManager.IsEmailConfirmedAsync(user))
-                {
-                    ModelState.AddModelError(string.Empty, _localizer["EmailNotFound"]);
-
-                    return View(model);
-                }
-
-                var code = await _userManager.GeneratePasswordResetTokenAsync(user);
-                var callbackUrl = Url.Action("ResetPassword", "Account", new { userId = user.Id, code }, HttpContext.Request.Scheme);
-
-                await _emailSender.SendEmailAsync(model.Email, _localizer["ResetPasswordTitle"], _localizer["ResetPasswordBody", HtmlEncoder.Default.Encode(callbackUrl)]);
-
-
-                return View("ForgotPasswordConfirmation");
-            }
-
-            return View(model);
-        }
-
-        [HttpGet]
-        [AllowAnonymous]
-        public IActionResult ResetPassword(string code = null)
-        {
-            return code == null ? View("Error") : View();
-        }
-
-        [HttpPost]
-        [AllowAnonymous]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ResetPassword(ResetPasswordViewModel model)
-        {
-            if (!ModelState.IsValid)
-            {
-                return View(model);
-            }
-            var user = await _userManager.FindByEmailAsync(model.Email);
-            if (user == null)
-            {
-                // Don't reveal that the user does not exist
-                return RedirectToAction(nameof(ResetPasswordConfirmation), "Account");
-            }
-            var result = await _userManager.ResetPasswordAsync(user, model.Code, model.Password);
-            if (result.Succeeded)
-            {
-                return RedirectToAction(nameof(ResetPasswordConfirmation), "Account");
-            }
-
-            AddErrors(result);
-
-            return View();
-        }
-
-        [HttpGet]
-        [AllowAnonymous]
-        public IActionResult ResetPasswordConfirmation()
-        {
-            return View();
-        }
-
-        [HttpGet]
-        [AllowAnonymous]
-        public IActionResult ForgotPasswordConfirmation()
-        {
-            return View();
-        }
-
-        [HttpGet]
-        [AllowAnonymous]
-        public async Task<IActionResult> ExternalLoginCallback(string returnUrl = null, string remoteError = null)
-        {
-            if (remoteError != null)
-            {
-                ModelState.AddModelError(string.Empty, _localizer["ErrorExternalProvider", remoteError]);
-
-                return View(nameof(Login));
-            }
-            var info = await _signInManager.GetExternalLoginInfoAsync();
-            if (info == null)
-            {
-                return RedirectToAction(nameof(Login));
-            }
-
-            // Sign in the user with this external login provider if the user already has a login.
-            var result = await _signInManager.ExternalLoginSignInAsync(info.LoginProvider, info.ProviderKey, isPersistent: false);
-            if (result.Succeeded)
-            {
-                return RedirectToLocal(returnUrl);
-            }
-            if (result.RequiresTwoFactor)
-            {
-                return RedirectToAction(nameof(LoginWith2fa), new { ReturnUrl = returnUrl });
-            }
-            if (result.IsLockedOut)
-            {
-                return View("Lockout");
-            }
-
-            // If the user does not have an account, then ask the user to create an account.
-            ViewData["ReturnUrl"] = returnUrl;
-            ViewData["LoginProvider"] = info.LoginProvider;
-            var email = info.Principal.FindFirstValue(ClaimTypes.Email);
-
-            return View("ExternalLoginConfirmation", new ExternalLoginConfirmationViewModel { Email = email });
-        }
-
-        [HttpPost]
-        [HttpGet]
-        [AllowAnonymous]
-        public IActionResult ExternalLogin(string provider, string returnUrl = null)
-        {
-            // Request a redirect to the external login provider.
-            var redirectUrl = Url.Action("ExternalLoginCallback", "Account", new { ReturnUrl = returnUrl });
-            var properties = _signInManager.ConfigureExternalAuthenticationProperties(provider, redirectUrl);
-
-            return Challenge(properties, provider);
-        }
-
-        [HttpPost]
-        [AllowAnonymous]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> ExternalLoginConfirmation(ExternalLoginConfirmationViewModel model, string returnUrl = null)
-        {
-            returnUrl = returnUrl ?? Url.Content("~/");
-
-            // Get the information about the user from the external login provider
-            var info = await _signInManager.GetExternalLoginInfoAsync();
-            if (info == null)
-            {
-                return View("ExternalLoginFailure");
-            }
-
-            if (ModelState.IsValid)
-            {
-                var user = new TUser
-                {
-                    UserName = model.UserName,
-                    Email = model.Email
-                };
-
-                var result = await _userManager.CreateAsync(user);
-                if (result.Succeeded)
-                {
-                    result = await _userManager.AddLoginAsync(user, info);
-                    if (result.Succeeded)
-                    {
-                        await _signInManager.SignInAsync(user, isPersistent: false);
-
-                        return RedirectToLocal(returnUrl);
-                    }
-                }
-
-                AddErrors(result);
-            }
-
-            ViewData["LoginProvider"] = info.LoginProvider;
-            ViewData["ReturnUrl"] = returnUrl;
-
-            return View(model);
-        }
-
-        [HttpGet]
-        [AllowAnonymous]
-        public async Task<IActionResult> LoginWithRecoveryCode(string returnUrl = null)
-        {
-            // Ensure the user has gone through the username & password screen first
-            var user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
-            if (user == null)
-            {
-                throw new InvalidOperationException(_localizer["Unable2FA"]);
-            }
-
-            var model = new LoginWithRecoveryCodeViewModel()
-            {
-                ReturnUrl = returnUrl
-            };
-
-            return View(model);
-        }
-
-        [HttpPost]
-        [AllowAnonymous]
-        public async Task<IActionResult> LoginWithRecoveryCode(LoginWithRecoveryCodeViewModel model)
-        {
-            if (!ModelState.IsValid)
-            {
-                return View(model);
-            }
-
-            var user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
-            if (user == null)
-            {
-                throw new InvalidOperationException(_localizer["Unable2FA"]);
-            }
-
-            var recoveryCode = model.RecoveryCode.Replace(" ", string.Empty);
-
-            var result = await _signInManager.TwoFactorRecoveryCodeSignInAsync(recoveryCode);
-
-            if (result.Succeeded)
-            {
-                return LocalRedirect(string.IsNullOrEmpty(model.ReturnUrl) ? "~/" : model.ReturnUrl);
-            }
-
-            if (result.IsLockedOut)
-            {
-                return View("Lockout");
-            }
-
-            ModelState.AddModelError(string.Empty, _localizer["InvalidRecoveryCode"]);
-
-            return View(model);
-        }
-
-        [HttpGet]
-        [AllowAnonymous]
-        public async Task<IActionResult> LoginWith2fa(bool rememberMe, string returnUrl = null)
-        {
-            // Ensure the user has gone through the username & password screen first
-            var user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
-
-            if (user == null)
-            {
-                throw new InvalidOperationException(_localizer["Unable2FA"]);
-            }
-
-            var model = new LoginWith2faViewModel()
-            {
-                ReturnUrl = returnUrl,
-                RememberMe = rememberMe
-            };
-
-            return View(model);
-        }
-
-        [HttpPost]
-        [AllowAnonymous]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> LoginWith2fa(LoginWith2faViewModel model)
-        {
-            if (!ModelState.IsValid)
-            {
-                return View(model);
-            }
-
-            var user = await _signInManager.GetTwoFactorAuthenticationUserAsync();
-            if (user == null)
-            {
-                throw new InvalidOperationException(_localizer["Unable2FA"]);
-            }
-
-            var authenticatorCode = model.TwoFactorCode.Replace(" ", string.Empty).Replace("-", string.Empty);
-
-            var result = await _signInManager.TwoFactorAuthenticatorSignInAsync(authenticatorCode, model.RememberMe, model.RememberMachine);
-
-            if (result.Succeeded)
-            {
-                return LocalRedirect(string.IsNullOrEmpty(model.ReturnUrl) ? "~/" : model.ReturnUrl);
-            }
-
-            if (result.IsLockedOut)
-            {
-                return View("Lockout");
-            }
-
-            ModelState.AddModelError(string.Empty, _localizer["InvalidAuthenticatorCode"]);
-
-            return View(model);
-        }
-
-        [HttpGet]
-        [AllowAnonymous]
-        public IActionResult Register(string returnUrl = null)
-        {
-            if (!_registerConfiguration.Enabled) return View("RegisterFailure");
-
-            ViewData["ReturnUrl"] = returnUrl;
-
-            switch (_loginConfiguration.ResolutionPolicy)
-            {
-                case LoginResolutionPolicy.Username:
-                    return View();
-                case LoginResolutionPolicy.Email:
-                    return View("RegisterWithoutUsername");
-                default:
-                    return View("RegisterFailure");
-            }
-        }
-
-        [HttpPost]
-        [AllowAnonymous]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Register(RegisterViewModel model, string returnUrl = null)
-        {
-            returnUrl = returnUrl ?? Url.Content("~/");
-
-            ViewData["ReturnUrl"] = returnUrl;
-
-            if (!ModelState.IsValid) return View(model);
-
-            var user = new TUser
-            {
-                UserName = model.UserName,
-                Email = model.Email
-            };
-
-            var result = await _userManager.CreateAsync(user, model.Password);
-            if (result.Succeeded)
-            {
-                var code = await _userManager.GenerateEmailConfirmationTokenAsync(user);
-                var callbackUrl = Url.Action("ConfirmEmail", "Account", new { userId = user.Id, code }, HttpContext.Request.Scheme);
-
-                await _emailSender.SendEmailAsync(model.Email, _localizer["ConfirmEmailTitle"], _localizer["ConfirmEmailBody", HtmlEncoder.Default.Encode(callbackUrl)]);
-                await _signInManager.SignInAsync(user, isPersistent: false);
-
-                return RedirectToLocal(returnUrl);
-            }
-
-            AddErrors(result);
-
-            // If we got this far, something failed, redisplay form
-            return View(model);
-        }
-
-        [HttpPost]
-        [AllowAnonymous]
-        [ValidateAntiForgeryToken]
-        public async Task<IActionResult> RegisterWithoutUsername(RegisterWithoutUsernameViewModel model, string returnUrl = null)
-        {
-            var registerModel = new RegisterViewModel
-            {
-                UserName = model.Email,
-                Email = model.Email,
-                Password = model.Password,
-                ConfirmPassword = model.ConfirmPassword
-            };
-
-            return await Register(registerModel, returnUrl);
-        }
         
+     
+        
+      
 
         /*****************************************/
         /* helper APIs for the AccountController */

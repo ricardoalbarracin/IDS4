@@ -58,26 +58,29 @@ namespace Skoruba.IdentityServer4.STS.Identity
 
             // Add audit logging
             services.AddAuditEventLogging<AdminAuditLogDbContext, AuditLog>(Configuration);
+            services.AddControllersWithViews();
+            services.AddAuthentication(Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationDefaults.AuthenticationScheme)
+            .AddCookie();
         }
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
         {
+           
+            if (env.IsDevelopment())
+            {
+                app.UseDeveloperExceptionPage();
+            }
             app.UseSecurityEncrypt(
-                   new List<SecurityEncryptOptions>
-                       {
+                  new List<SecurityEncryptOptions>
+                      {
                         new SecurityEncryptOptions
                         {
                             Path="/connect/tokenService",
                             RedirectPath="/connect/token",
                             Parameters= new List<string> { "client_secret" }
                         }
-                       }
-               );
-            if (env.IsDevelopment())
-            {
-                app.UseDeveloperExceptionPage();
-            }
-
+                      }
+              );
             // Add custom security headers
             app.UseSecurityHeaders();
 
@@ -104,8 +107,9 @@ namespace Skoruba.IdentityServer4.STS.Identity
 
         public virtual void RegisterAuthentication(IServiceCollection services)
         {
-            services.AddAuthenticationServices<AdminIdentityDbContext, UserIdentity, UserIdentityRole>(Configuration);
-            services.AddIdentityServer<IdentityServerConfigurationDbContext, IdentityServerPersistedGrantDbContext, UserIdentity>(Configuration);
+            
+            services.AddAuthenticationServices<AdminIdentityDbContext>(Configuration);
+            services.AddIdentityServer<IdentityServerConfigurationDbContext, IdentityServerPersistedGrantDbContext>(Configuration);
         }
 
         public virtual void RegisterAuthorization(IServiceCollection services)

@@ -13,10 +13,10 @@
     }
 }
 
-@inject SignInManager<UserIdentity> SignInManager
+@*@inject SignInManager<UserIdentity> SignInManager
 @{
     var hasExternalLogins = (await SignInManager.GetExternalAuthenticationSchemesAsync()).Any();
-}
+}*@
 <!DOCTYPE html>
 <html>
 <head>
@@ -57,7 +57,7 @@
                 <div class="dropdown-menu">
                     <a class="dropdown-item" asp-controller="Manage" asp-action="Index">@Localizer["ManageProfile"]</a>
                     <a class="dropdown-item" asp-controller="Manage" asp-action="PersonalData">@Localizer["ManagePersonalData"]</a>
-                    @if (hasExternalLogins)
+                    @if (false)
                     {
                         <a class="dropdown-item" asp-controller="Manage" asp-action="ExternalLogins">@Localizer["ExternalLogins"]</a>
                     }
